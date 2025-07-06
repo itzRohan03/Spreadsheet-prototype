@@ -1,7 +1,4 @@
-import { useState } from 'react';
-import reactLogo from './assets/react.svg';
-import './App.css';
-import Spreadsheet from './components/Spreadsheet'; // Adjust path if needed
+import Spreadsheet from './components/Spreadsheet';
 
 function App() {
   return (
