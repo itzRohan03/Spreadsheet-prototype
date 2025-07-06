@@ -1,11 +1,11 @@
-import { useReactTable, getCoreRowModel } from '@tanstack/react-table';
-import { useMemo, useState, useEffect, type KeyboardEvent } from 'react';
+import { useReactTable, getCoreRowModel, type VisibilityState } from '@tanstack/react-table';
+import { useMemo, useState, useEffect, type KeyboardEventHandler } from 'react';
 
 interface RowData {
   id: number;
   name: string;
   value: string;
-  status: string; // Added for tab filtering
+  status: string;
 }
 
 const sampleData: RowData[] = [
@@ -22,10 +22,9 @@ const columns = [
 
 const Spreadsheet: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string>('all');
-  const [hiddenColumns, setHiddenColumns] = useState<string[]>([]);
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
   const [focusedCell, setFocusedCell] = useState<{ rowIdx: number; colIdx: number } | null>(null);
 
-  // Filter data based on active tab
   const filteredData = useMemo(() => {
     return activeTab === 'all'
       ? sampleData
@@ -41,9 +40,9 @@ const Spreadsheet: React.FC = () => {
     data: filteredData,
     getCoreRowModel: getCoreRowModel(),
     state: {
-      columnVisibility: Object.fromEntries(hiddenColumns.map(colId => [colId, false])),
+      columnVisibility,
     },
-    onColumnVisibilityChange: setHiddenColumns,
+    onColumnVisibilityChange: setColumnVisibility,
   });
 
   const handleTabClick = (tab: string) => {
@@ -58,7 +57,7 @@ const Spreadsheet: React.FC = () => {
     setFocusedCell({ rowIdx, colIdx });
   };
 
-  const handleKeyDown = (e: KeyboardEvent) => {
+  const handleKeyDown: KeyboardEventHandler<HTMLDivElement> = (e) => {
     if (!focusedCell) return;
 
     let { rowIdx, colIdx } = focusedCell;
@@ -83,28 +82,34 @@ const Spreadsheet: React.FC = () => {
   };
 
   useEffect(() => {
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    const handleKeyDownEvent = (e: Event) => handleKeyDown(e as unknown as React.KeyboardEvent<HTMLDivElement>);
+    window.addEventListener('keydown', handleKeyDownEvent);
+    return () => window.removeEventListener('keydown', handleKeyDownEvent);
   }, [focusedCell]);
 
   const toggleColumn = (columnId: string) => {
-    setHiddenColumns(prev =>
-      prev.includes(columnId) ? prev.filter(id => id !== columnId) : [...prev, columnId]
-    );
-    console.log(`Toggled column ${columnId}: ${!hiddenColumns.includes(columnId)}`);
+    setColumnVisibility(prev => ({
+      ...prev,
+      [columnId]: !prev[columnId],
+    }));
+    console.log(`Toggled column ${columnId}: ${!columnVisibility[columnId]}`);
   };
 
   const handleResize = (columnId: string, newSize: number) => {
     const column = table.getColumn(columnId);
-    if (column) {
-      column.getContext().columnDef.size = newSize;
-      table.resetColumnSizing();
+    if (column && column.getCanResize()) {
+      const updatedColumns = columns.map(col =>
+        col.accessorKey === columnId ? { ...col, size: newSize } : col
+      );
+      table.setOptions(prev => ({
+        ...prev,
+        columns: updatedColumns,
+      }));
     }
   };
 
   return (
     <div className="p-6 bg-white min-h-screen" onKeyDown={handleKeyDown} tabIndex={0}>
-      {/* Header with Tabs and Column Toggles */}
       <div className="flex items-center justify-between mb-6 border-b border-gray-200 pb-4">
         <div className="flex space-x-2">
           <button
@@ -131,7 +136,7 @@ const Spreadsheet: React.FC = () => {
               className="px-2 py-1 bg-gray-200 text-gray-800 rounded-md text-xs"
               onClick={() => toggleColumn(col.accessorKey)}
             >
-              {col.header} {hiddenColumns.includes(col.accessorKey) ? '👁️' : '🙈'}
+              {col.header} {columnVisibility[col.accessorKey] ? '🙈' : '👁️'}
             </button>
           ))}
           <button
@@ -148,8 +153,6 @@ const Spreadsheet: React.FC = () => {
           </button>
         </div>
       </div>
-
-      {/* Spreadsheet Grid */}
       <div className="overflow-x-auto border border-gray-300 rounded-md shadow-sm">
         <table className="w-full border-collapse">
           <thead>
@@ -159,14 +162,14 @@ const Spreadsheet: React.FC = () => {
                   <th
                     key={column.id}
                     className="border-b border-gray-300 bg-gray-100 p-2 text-left text-sm font-semibold text-gray-800 sticky top-0"
-                    style={{ width: column.getSize() || column.columnDef.size }}
+                    style={{ width: column.getSize() || column.column.columnDef.size }}
                   >
                     {column.column.columnDef.header as string}
                     <div
                       className="w-1 h-4 bg-gray-400 cursor-col-resize inline-block ml-2"
                       onMouseDown={(e) => {
                         const startX = e.clientX;
-                        const startSize = column.getSize() || (column.columnDef.size as number);
+                        const startSize = column.getSize() || (column.column.columnDef.size as number);
                         const handleMouseMove = (e: MouseEvent) => {
                           const newSize = Math.max(50, startSize + (e.clientX - startX));
                           handleResize(column.id, newSize);
