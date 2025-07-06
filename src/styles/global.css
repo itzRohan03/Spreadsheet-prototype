@@ -1,0 +1,9 @@
+table {
+  @apply w-full border-collapse;
+}
+th, td {
+  @apply border border-gray-300 p-2;
+}
+th {
+  @apply bg-gray-100 font-semibold;
+}
